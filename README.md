@@ -4,9 +4,28 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-> **中文**：一个轻量级本地代理网关，将 Obsidian Claudian / Claude Code 等客户端的请求统一转发到 MiMo、Claude、Kimi、GLM、ModelScope DeepSeek 等上游模型，同时避免 API Key 直接暴露在插件配置中。
+> **中文**：一个面向 AI Agent 与 LLM 应用的**安全本地网关**。它将 Obsidian Claudian、Claude Code、Cursor 等 Agent 客户端统一接入 MiMo、Claude、Kimi、GLM、ModelScope DeepSeek 等大模型，同时把真实 API Key 隔离在本地，避免敏感凭证泄露到插件配置中。
 >
-> **English**: A lightweight local proxy gateway that unifies requests from Obsidian Claudian / Claude Code clients to upstream models (MiMo, Claude, Kimi, GLM, ModelScope DeepSeek) without exposing your API keys in plugin settings.
+> **English**: A **secure local gateway for AI Agents and LLM apps**. It unifies Agent clients like Obsidian Claudian, Claude Code, and Cursor to upstream LLMs (MiMo, Claude, Kimi, GLM, ModelScope DeepSeek) while keeping real API keys local, preventing credential leaks into plugin configs.
+
+---
+
+## 🎯 Why This Exists / 项目定位
+
+AI Agents (如 Claudian、Claude Code、Cursor) 需要频繁调用大模型 API。直接在插件里填写真实 API Key 存在风险：
+
+- 插件配置可能被同步到云端或意外分享
+- 多个 Agent 工具需要重复配置多个厂商 Key
+- 无法灵活切换模型供应商
+
+**MiMo Local Proxy** 作为一个本地数据/凭证代理层，解决以上问题：
+
+| Problem / 问题 | Solution / 解决方案 |
+|---|---|
+| API Key 暴露在插件配置中 | 真实 Key 仅存本地 `.env`，插件只配 `http://127.0.0.1:8787` |
+| 多 Agent、多模型配置混乱 | 统一网关，按 `model` 字段智能路由 |
+| 厂商协议不兼容 | 自动适配 Anthropic / OpenAI 格式差异 |
+| 视频/多模态分析需求 | 内置 MiMo-V2-Omni 视频/图像分析脚本 |
 
 ---
 
@@ -14,31 +33,31 @@
 
 | Feature / 功能 | Description / 说明 |
 |---|---|
-| 🔒 API Key Protection / Key 隔离 | 真实 API Key 只保存在本地 `.env`，插件只配置代理地址 / Real API keys stay in local `.env`; plugins only know the proxy address. |
-| 🚀 Multi-Model Routing / 多模型路由 | 根据请求中的 `model` 字段自动路由到 MiMo / Claude / Kimi / GLM / ModelScope / 自动路由 based on the `model` field. |
-| 🔧 Protocol Adaptation / 协议适配 | 自动修补 Anthropic / OpenAI 响应格式差异 / Auto-patches differences between Anthropic and OpenAI response formats. |
-| 📹 Video Analysis / 视频分析 | 内置 `batch_video_analyzer.py` 与 `omni_analyzer.py`，基于 MiMo-V2-Omni 批量分析视频质量。 / Built-in video analysis tools powered by MiMo-V2-Omni. |
-| 📊 Streaming Support / 流式支持 | 支持 SSE 流式转发，适配 Claudian 长回复场景 / Supports SSE streaming for long-form responses in Claudian. |
-| 🧪 Test Suite / 测试脚本 | 提供多个 `test_*.py` 脚本，方便验证代理与上游连通性。 / Includes `test_*.py` scripts for connectivity verification. |
+| 🔒 **AI Agent Key Isolation** / Key 隔离 | 真实 API Key 只保存在本地 `.env`；Agent 只持有本地代理地址。 |
+| 🚀 **Multi-Model Routing** / 多模型路由 | 根据请求中的 `model` 字段自动路由到 MiMo / Claude / Kimi / GLM / ModelScope。 |
+| 🔧 **Protocol Adaptation** / 协议适配 | 自动修补 Anthropic / OpenAI 响应格式，兼容 Claudian / Claude Code。 |
+| 📹 **Multimodal Analysis** / 多模态分析 | 内置批量视频质量分析、Omni 图像/视频理解、GLM 视觉分析脚本。 |
+| 📊 **Streaming Support** / 流式支持 | 支持 SSE 流式转发，适配 Agent 长回复场景。 |
+| 🧪 **Agent Connectivity Tests** / 连通性测试 | 提供测试脚本验证 Agent → Proxy → Upstream 链路。 |
 
 ---
 
 ## 🏗️ Architecture / 架构
 
 ```
-┌─────────────────┐      ┌──────────────────────┐      ┌─────────────────────┐
-│  Obsidian       │      │  MiMo Local Proxy    │      │  Upstream APIs      │
-│  Claudian /     │ ──►  │  http://127.0.0.1:8787 │ ──► │  MiMo / Claude /    │
-│  Claude Code    │      │  (FastAPI + httpx)   │      │  Kimi / GLM /       │
-└─────────────────┘      └──────────────────────┘      │  ModelScope         │
-                                                       └─────────────────────┘
+┌─────────────────────────┐      ┌──────────────────────────┐      ┌─────────────────────┐
+│  AI Agent Clients       │      │  MiMo Local Proxy        │      │  Upstream LLM APIs  │
+│  Obsidian Claudian      │ ──►  │  http://127.0.0.1:8787   │ ──►  │  MiMo / Claude /    │
+│  Claude Code / Cursor   │      │  FastAPI + httpx         │      │  Kimi / GLM /       │
+└─────────────────────────┘      └──────────────────────────┘      │  ModelScope         │
+                                                                   └─────────────────────┘
 ```
 
-Routing rules / 路由规则 (based on `model` in request body):
+Routing rules / 路由规则（基于请求体中的 `model` 字段）：
 
 | Model Keyword / 模型关键字 | Upstream / 上游 | Protocol / 协议 |
 |---|---|---|
-| `claude*` | Anthropic / Claude 中转 | Anthropic Messages |
+| `claude*` | Anthropic / Claude relay | Anthropic Messages |
 | `mimo*` | Xiaomi MiMo | Anthropic-compatible |
 | `kimi*` | Moonshot Kimi | OpenAI-compatible |
 | `glm*` | Zhipu GLM | OpenAI-compatible |
@@ -67,7 +86,7 @@ cp .env.example .env
 # 4. 编辑 .env 填入真实 API Key
 ```
 
-> **Windows users / Windows 用户**：也可以直接双击 `start-proxy.bat` 或在 PowerShell 执行 `\.start.ps1`。
+> **Windows users / Windows 用户**：也可以直接双击 `start-proxy.bat` 或在 PowerShell 执行 `.\start.ps1`。
 
 ---
 
@@ -137,7 +156,11 @@ OPENAI_MODEL=mimo-v2.5-pro
 
 ---
 
-## 🎬 Video Analysis / 视频分析
+## 🎬 AI Video & Image Analysis / AI 视频与图像分析
+
+This project also includes AI-powered multimodal analysis tools for video/image data:
+
+本项目还包含面向视频/图像数据的 AI 多模态分析工具：
 
 ### Single image or video / 单张图片或视频
 
@@ -151,9 +174,15 @@ python omni_analyzer.py <path/to/media> [prompt]
 python batch_video_analyzer.py --input "D:\Videos" --output "report.md"
 ```
 
-This will scan all video files under the input directory and generate a Markdown report with scores for clarity, color, stability, exposure, composition, audio, and overall quality.
+Generates a Markdown report scoring clarity, color, stability, exposure, composition, audio, and overall quality.
 
 该脚本会扫描输入目录下的所有视频，并生成包含清晰度、色彩、稳定性、曝光、构图、音频、综合评分等维度的 Markdown 报告。
+
+### Vision-based video analysis via GLM / 基于 GLM 视觉模型的视频分析
+
+```bash
+python video_analyze_kimi.py <video_path> [output.md]
+```
 
 ---
 
@@ -179,7 +208,7 @@ mimo-proxy/
 ├── main.py                      # FastAPI proxy gateway / 代理网关主程序
 ├── batch_video_analyzer.py      # Batch video quality analysis / 批量视频质量分析
 ├── omni_analyzer.py             # Single image/video analysis / 单图/视频分析
-├── video_analyze_kimi.py        # Video analysis via GLM vision / 基于 GLM 视觉模型的视频分析
+├── video_analyze_kimi.py        # Video analysis via GLM vision / 基于 GLM 视觉的视频分析
 ├── requirements.txt             # Python dependencies / Python 依赖
 ├── .env.example                 # Environment variables template / 环境变量模板
 ├── start.ps1                    # PowerShell startup script / PowerShell 启动脚本
@@ -209,5 +238,5 @@ This project is licensed under the [MIT License](./LICENSE).
 
 ## 🙏 Acknowledgments / 致谢
 
-- Inspired by the need to safely bridge Obsidian Claudian with Chinese LLM providers.
+- Built to safely bridge AI Agents with Chinese LLM providers.
 - Powered by [FastAPI](https://fastapi.tiangolo.com/), [httpx](https://www.python-httpx.org/), and [python-dotenv](https://saurabh-kumar.com/python-dotenv/).
